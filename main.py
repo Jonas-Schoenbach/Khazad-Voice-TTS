@@ -23,7 +23,7 @@ from src.utils import (
     load_coords,
     save_coords,
     load_npc_memory,
-    save_npc_memory
+    save_npc_memory,
 )
 
 log = setup_logger("MAIN")
@@ -57,7 +57,9 @@ def get_crop_roi(img_np, prompt_title="SELECT AREA", full_screen=False):
 
     if full_screen:
         # Overlay on top of everything for the initial setup
-        cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        cv2.setWindowProperty(
+            window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN
+        )
         cv2.setWindowProperty(window_name, cv2.WND_PROP_TOPMOST, 1)
 
     r = cv2.selectROI(window_name, img_np, fromCenter=False, showCrosshair=True)
@@ -69,10 +71,12 @@ def get_crop_roi(img_np, prompt_title="SELECT AREA", full_screen=False):
     return int(r[0]), int(r[1]), int(r[2]), int(r[3])
 
 
-def capture_dual_areas():
+def capture_dual_areas(mode_prefix="echoes"):
     """
     Captures screen and returns (quest_img_pil, npc_name_img_pil).
     Handles saving/loading coordinates for BOTH regions.
+    Args:
+        mode_prefix: String to distinguish coords between modes (e.g. 'echoes' vs 'retail')
     """
     print("📸 Capturing screen...")
     screenshot = ImageGrab.grab()  # Captures primary monitor
@@ -82,46 +86,63 @@ def capture_dual_areas():
     screenshot_np = cv2.cvtColor(screenshot_np, cv2.COLOR_RGB2BGR)
 
     # Load existing coordinates
-    coords = load_coords()
+    all_coords = load_coords()
+
+    # Ensure we look for the specific mode's coords
+    # Structure: { "echoes_quest": [...], "echoes_name": [...], "retail_quest": ... }
+    q_key = f"{mode_prefix}_quest"
+    n_key = f"{mode_prefix}_name"
 
     # Check if we have both required regions
-    if not isinstance(coords, dict) or "quest" not in coords or "name" not in coords:
-        print("⚠️ Coordinates missing or invalid. Initiating Setup...")
+    if (
+        not isinstance(all_coords, dict)
+        or q_key not in all_coords
+        or n_key not in all_coords
+    ):
+        print(f"⚠️ {mode_prefix.upper()} Coordinates missing. Initiating Setup...")
 
         # 1. Select Quest Text
-        q_roi = get_crop_roi(screenshot_np, prompt_title="SELECT QUEST TEXT WINDOW", full_screen=True)
+        q_roi = get_crop_roi(
+            screenshot_np, prompt_title="SELECT QUEST TEXT WINDOW", full_screen=True
+        )
         if not q_roi:
             return None, None
 
         # 2. Select NPC Name
-        # We pass full_screen=True again to ensure overlay is correct
-        n_roi = get_crop_roi(screenshot_np, prompt_title="SELECT NPC NAME PLATE", full_screen=True)
+        n_roi = get_crop_roi(
+            screenshot_np, prompt_title="SELECT NPC NAME PLATE", full_screen=True
+        )
         if not n_roi:
             return None, None
 
-        coords = {"quest": q_roi, "name": n_roi}
-        save_coords(coords)
+        all_coords[q_key] = q_roi
+        all_coords[n_key] = n_roi
+        save_coords(all_coords)
 
     # --- Crop Quest Region ---
-    qx, qy, qw, qh = coords["quest"]
-    # Boundary check
+    qx, qy, qw, qh = all_coords[q_key]
     img_h, img_w, _ = screenshot_np.shape
+
     if qx + qw > img_w or qy + qh > img_h:
-        log.warning("Saved 'quest' coordinates are outside current screen. Resetting.")
-        save_coords({})  # clear corrupt coords
+        log.warning(f"Saved {q_key} coordinates are outside current screen. Resetting.")
+        # Clear specific keys
+        del all_coords[q_key]
+        del all_coords[n_key]
+        save_coords(all_coords)
         return None, None
 
-    quest_np = screenshot_np[qy: qy + qh, qx: qx + qw]
+    quest_np = screenshot_np[qy : qy + qh, qx : qx + qw]
 
     # --- Crop Name Region ---
-    nx, ny, nw, nh = coords["name"]
-    # Boundary check
+    nx, ny, nw, nh = all_coords[n_key]
     if nx + nw > img_w or ny + nh > img_h:
-        log.warning("Saved 'name' coordinates are outside current screen. Resetting.")
-        save_coords({})
+        log.warning(f"Saved {n_key} coordinates are outside current screen. Resetting.")
+        del all_coords[q_key]
+        del all_coords[n_key]
+        save_coords(all_coords)
         return None, None
 
-    name_np = screenshot_np[ny: ny + nh, nx: nx + nw]
+    name_np = screenshot_np[ny : ny + nh, nx : nx + nw]
 
     # Convert both back to PIL for OCR
     quest_pil = Image.fromarray(cv2.cvtColor(quest_np, cv2.COLOR_BGR2RGB))
@@ -130,10 +151,11 @@ def capture_dual_areas():
     return quest_pil, name_pil
 
 
-def process_echoes_mode(quest_img, name_img, db, tts):
+def process_narrator(quest_img, name_img, db, tts):
     """
+    Common logic for both Echoes and Retail:
     1. OCR Quest Text
-    2. OCR NPC Name
+    2. OCR NPC Name (Optimized)
     3. Check Memory (Persisted Voice)
     4. If new, Fuzzy Match DB -> Pick Voice -> Save Memory
     5. Stream Audio
@@ -148,7 +170,6 @@ def process_echoes_mode(quest_img, name_img, db, tts):
     # 2. NPC Name (Optimized)
     print("Reading NPC Name...")
     ocr_name_clean = run_name_ocr(name_img)
-
     if not ocr_name_clean:
         ocr_name_clean = "Unknown"
 
@@ -159,29 +180,25 @@ def process_echoes_mode(quest_img, name_img, db, tts):
     mem_key = ocr_name_clean.lower()
 
     if mem_key in memory:
-        # --- HIT: Use stored voice ---
+        # HIT: Use stored voice
         data = memory[mem_key]
         voice_id = data["voice_id"]
         print(f"🧠 Memory Recall: '{data['name']}' -> Voice: {voice_id}")
     else:
-        # --- MISS: Resolve new ---
+        # MISS: Resolve new
         print("🔍 Resolving new NPC...")
-
-        # db.lookup now returns (Gender, Race, RealName)
         gender, race, matched_name = db.lookup(ocr_name_clean)
 
         if gender and race:
             print(f"✅ DB Match: {matched_name} ({race} {gender})")
         else:
             print("⚠️ No DB match. Assigning Random Profile.")
-            # Random fallback
             races = ["Men", "Elf", "Dwarf", "Hobbit"]
             genders = ["Male", "Female"]
             race = random.choice(races)
             gender = random.choice(genders)
-            matched_name = ocr_name_clean  # Use the raw OCR name if no match found
+            matched_name = ocr_name_clean
 
-        # Pick Voice
         voice_id, category = tts.pick_voice(gender, race)
 
         # Save to Memory
@@ -189,7 +206,7 @@ def process_echoes_mode(quest_img, name_img, db, tts):
             "name": matched_name,
             "race": race,
             "gender": gender,
-            "voice_id": voice_id
+            "voice_id": voice_id,
         }
         save_npc_memory(memory)
         print(f"💾 Saved to memory: {matched_name} -> {voice_id} ({category})")
@@ -198,14 +215,8 @@ def process_echoes_mode(quest_img, name_img, db, tts):
     print("\n--- PLAYBACK (Streaming) ---")
     for i, line in enumerate(sentences):
         print(f"Line {i + 1}: {line}")
-
-        # Generate audio (compute)
         audio = tts.generate(line, voice_id)
-
-        # Play audio (this blocks until the sentence finishes)
         play_audio(audio, tts.samplerate, volume=DEFAULT_VOLUME)
-
-        # Small pause for natural flow
         time.sleep(0.2)
 
 
@@ -213,8 +224,9 @@ def main():
     print("========================================")
     print("       LOTRO NARRATOR - CLI             ")
     print("========================================")
-    print("[1] Process Saved Image (File Mode)")
-    print("[2] Echoes of Angmar Mode (Middle Mouse)")
+    print("[1] File Mode (Process Saved Images)")
+    print("[2] Echoes of Angmar Mode (Live Capture)")
+    print("[3] Retail Mode (IN-PROGRESS)")
 
     mode_choice = input("\nSelect Mode: ").strip()
 
@@ -224,7 +236,9 @@ def main():
 
     if mode_choice == "1":
         # --- ORIGINAL FILE MODE ---
-        files = [f for f in os.listdir(SAMPLES_DIR) if f.lower().endswith((".png", ".jpg"))]
+        files = [
+            f for f in os.listdir(SAMPLES_DIR) if f.lower().endswith((".png", ".jpg"))
+        ]
         if not files:
             log.error(f"No images in {SAMPLES_DIR}")
             return
@@ -236,72 +250,69 @@ def main():
         try:
             idx = int(input("\nSelect Image ID: "))
             img_path = SAMPLES_DIR / files[idx]
-
-            # Use OpenCV to read file for cropping
             img_np = cv2.imread(str(img_path))
             roi = get_crop_roi(img_np, prompt_title="CROP TEXT")
             if not roi:
                 return
 
             full_img = Image.open(img_path)
-            cropped_img = full_img.crop((roi[0], roi[1], roi[0] + roi[2], roi[1] + roi[3]))
+            cropped_img = full_img.crop(
+                (roi[0], roi[1], roi[0] + roi[2], roi[1] + roi[3])
+            )
 
-            # Process file mode (using a simplified standalone logic here to avoid complex dual-capture requirement)
             print("\nReading text...")
             sentences = run_ocr(cropped_img)
             if not sentences:
                 log.warning("No text found.")
                 return
 
-            ocr_guess = sentences[0] if sentences else ""
-            print(f"\n📝 OCR Read Name: '{ocr_guess}'")
-            gender, race, _ = db.lookup(ocr_guess)  # Updated lookup returns 3 values now
-
-            if not (gender and race):
-                # Simple fallback for file mode
-                gender, race = "Male", "Men"
-
-            voice_id, _ = tts.pick_voice(gender, race)
-            print(f"🎙️ Voice: {voice_id}")
-
+            # Simple fallback for file mode
+            voice_id, _ = tts.pick_voice("Male", "Men")
             for line in sentences:
                 print(f"Playing: {line}")
-                play_audio(tts.generate(line, voice_id), tts.samplerate, volume=DEFAULT_VOLUME)
+                play_audio(
+                    tts.generate(line, voice_id), tts.samplerate, volume=DEFAULT_VOLUME
+                )
 
         except Exception as e:
             log.error(f"Error in File Mode: {e}")
             return
 
-    elif mode_choice == "2":
-        # --- ECHOES OF ANGMAR MODE ---
-        print("\n--- ECHOES OF ANGMAR MODE ACTIVE ---")
+    elif mode_choice in ["2", "3"]:
+        # --- LIVE CAPTURE MODES ---
+        is_retail = mode_choice == "3"
+        mode_name = "RETAIL (WIP)" if is_retail else "ECHOES OF ANGMAR"
+        mode_prefix = "retail" if is_retail else "echoes"
+
+        print(f"\n--- {mode_name} MODE ACTIVE ---")
+        if is_retail:
+            print("⚠️ NOTE: This mode is experimental for the modern Retail client.")
+
         print("Go to your game window.")
         print("CLICK MIDDLE MOUSE BUTTON to capture.")
         print("  - First run: Select Quest Text area -> Then NPC Name area.")
         print("  - Subsequent runs: Uses saved coordinates.")
         print("Press Ctrl+C in this terminal to quit.")
 
-        # Start the listener in a non-blocking way
         listener = mouse.Listener(on_click=on_click)
         listener.start()
 
         try:
             while True:
-                # Wait for the event flag
                 if capture_trigger.is_set():
                     capture_trigger.clear()
 
-                    # Delay because middle-mouse button hides NPC name window
+                    print("⏳ Delaying capture by 1s (waiting for UI)...")
                     time.sleep(1.0)
 
                     # Capture & Process
-                    q_img, n_img = capture_dual_areas()
+                    q_img, n_img = capture_dual_areas(mode_prefix=mode_prefix)
                     if q_img and n_img:
-                        process_echoes_mode(q_img, n_img, db, tts)
+                        process_narrator(q_img, n_img, db, tts)
 
                     print("\nReady for next capture...")
 
-                time.sleep(0.1)  # Reduce CPU usage
+                time.sleep(0.1)
         except KeyboardInterrupt:
             print("\nStopping listener...")
             listener.stop()
