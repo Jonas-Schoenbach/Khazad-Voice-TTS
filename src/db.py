@@ -2,6 +2,7 @@
 
 # > Standard Library
 from typing import Tuple, Optional, List, Dict
+import difflib
 
 # > Third-party imports
 import pandas as pd
@@ -15,8 +16,9 @@ log = setup_logger(__name__)
 
 class NPCDatabase:
     """
-    Manages loading NPC data and providing random samples for selection.
+    Manages loading NPC data and matching names.
     """
+
     def __init__(self, csv_path: str = str(NPC_DATA_PATH)):
         self.data = None
         self.all_names = []
@@ -31,52 +33,41 @@ class NPCDatabase:
         except Exception as e:
             log.error(f"❌ Failed to load database: {e}")
 
-    def get_names(self) -> List[str]:
-        """Returns all unique NPC names."""
-        return self.all_names
-
     def get_random_npcs(self, count: int = 10) -> List[Dict]:
-        """
-        Returns a random sample of NPCs from the database.
-        Useful for presenting a 'Voice Palette' to the user.
-
-        Parameters
-        ----------
-        count : int
-            Number of random rows to return.
-
-        Returns
-        -------
-        List[Dict]
-            List of NPC records.
-        """
+        """Returns a random sample of NPCs."""
         if self.data is None or self.data.empty:
             return []
-
-        # Sample 'count' rows; if DB matches are fewer than count, return all
         sample_size = min(count, len(self.data))
         sample = self.data.sample(n=sample_size)
-
         return sample.to_dict("records")
 
-    def lookup(self, name: str) -> Tuple[Optional[str], Optional[str]]:
+    def lookup(self, name: str) -> Tuple[Optional[str], Optional[str], str]:
         """
-        Exact or Starts-with lookup.
+        Tries to find an NPC by name.
+        Returns: (Gender, Race, RealName)
         """
         if self.data is None or not name:
-            return None, None
+            return None, None, name
 
         name_clean = name.lower().strip()
 
         # 1. Exact Match
         match = self.data[self.data["Name_Lower"] == name_clean]
-
-        # 2. Starts-with Match
-        if match.empty:
-            match = self.data[self.data["Name_Lower"].str.startswith(name_clean)]
-
         if not match.empty:
             row = match.iloc[0]
-            return row["Gender"], row["Race"]
+            return row["Gender"], row["Race"], row["Name"]
 
-        return None, None
+        # 2. Fuzzy Match (using difflib)
+        # Finds closest match if similarity is > 60%
+        close_matches = difflib.get_close_matches(name, self.all_names, n=1, cutoff=0.6)
+
+        if close_matches:
+            best_match = close_matches[0]
+            # Retrieve the row for the best match
+            match = self.data[self.data["Name"] == best_match]
+            if not match.empty:
+                row = match.iloc[0]
+                log.info(f"🔍 Fuzzy Match: '{name}' -> '{best_match}'")
+                return row["Gender"], row["Race"], best_match
+
+        return None, None, name
