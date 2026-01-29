@@ -5,6 +5,7 @@ pytesseract
 sounddevice
 nltk
 scipy
+pynput
 # Core Kokoro & Audio dependencies
 kokoro>=0.3.4
 soundfile

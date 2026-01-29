@@ -29,4 +29,4 @@ if os.path.exists(ESPEAK_PATH):
 # Automatically select CUDA (GPU) if available, otherwise CPU
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 SAMPLE_RATE = 24000
-DEFAULT_VOLUME = 0.3
+DEFAULT_VOLUME = 0.1
