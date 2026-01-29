@@ -11,7 +11,8 @@ import torch
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 NPC_DATA_PATH = DATA_DIR / "npc_data.csv"
-SAMPLES_DIR = DATA_DIR / "samples"
+SAMPLES_DIR = DATA_DIR / "screenshots"
+REF_AUDIO_DIR = DATA_DIR / "reference_audio"
 
 # External Tool Paths (Adjust if installed elsewhere)
 # Tesseract OCR
@@ -30,3 +31,6 @@ if os.path.exists(ESPEAK_PATH):
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 SAMPLE_RATE = 24000
 DEFAULT_VOLUME = 0.1
+
+# Qwen Settings
+QWEN_MODEL_ID = "Qwen/Qwen3-TTS-12Hz-0.6B-Base"

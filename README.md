@@ -56,14 +56,14 @@ pip uninstall torch torchvision torchaudio -y
 *Most users should use this.*
 
 ```bash
-pip install torch torchvision torchaudio --index-url [https://download.pytorch.org/whl/cu121](https://download.pytorch.org/whl/cu121)
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 ```
 
 **Option B: New RTX 50-Series (RTX 5070, 5080, 5090)**
 *These cards require the "Nightly" build to support the new Blackwell architecture.*
 
 ```bash
-pip install --pre torch torchvision torchaudio --index-url [https://download.pytorch.org/whl/nightly/cu128](https://download.pytorch.org/whl/nightly/cu128)
+pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu128
 ```
 
 **3. Verify Installation:**
