@@ -55,7 +55,7 @@ def clean_ocr_errors(sentences: List[str]) -> List[str]:
     """
     cleaned = []
     for s in sentences:
-        s = s.replace("|", "I").replace("‘", "'").replace("’", "'")
+        s = s.replace("|", "I").replace("‘", "'").replace("’", "'").replace("'T","'I").replace("1","I").replace("'Ihe","The").replace("REWARDS","")
         s = re.sub(r"'lam\b", "I am", s, flags=re.IGNORECASE)
         s = re.sub(r"'l\b", "I", s)
         s = re.sub(r"\bgoad\b", "good", s)

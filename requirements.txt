@@ -6,13 +6,7 @@ sounddevice
 nltk
 scipy
 pynput
-# Core Kokoro & Audio dependencies
 kokoro>=0.3.4
 soundfile
-# Torch (CPU default - see README for GPU)
-torch --index-url https://download.pytorch.org/whl/cpu
-
-# Qwen3-TTS Dependencies (GPU Mode)
-qwen-tts
 transformers
 accelerate

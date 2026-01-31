@@ -2,6 +2,7 @@
 
 # > Standard Library
 import os
+import sys
 import re
 import random
 import time
@@ -14,69 +15,76 @@ from kokoro import KPipeline
 
 # > Local dependencies
 from .utils import setup_logger
-from .config import SAMPLE_RATE, DEVICE, QWEN_MODEL_ID, REF_AUDIO_DIR
+from .config import SAMPLE_RATE, DEVICE, REF_AUDIO_DIR, TTS_SPEED, TTS_PADDING, TTS_WAVE_STEPS
 
 log = setup_logger(__name__)
 
 
 def get_tts_backend():
     """
-    Factory to return QwenBackend if GPU is available, otherwise KokoroBackend.
+    Factory to return LuxBackend if GPU is available, otherwise KokoroBackend.
     """
     if torch.cuda.is_available():
-        log.info("🚀 GPU Detected! Initializing Qwen3-TTS Backend...")
+        log.info("🚀 GPU Detected! Initializing LuxTTS Backend...")
         try:
-            return QwenBackend()
+            return LuxBackend()
         except ImportError as e:
-            log.error(f"❌ Qwen Import Error: {e}")
+            log.error(f"❌ LuxTTS Import Error: {e}")
             log.warning("Falling back to Kokoro.")
             return KokoroBackend()
         except Exception as e:
-            log.error(f"❌ Error loading Qwen: {e}. Falling back to Kokoro.")
+            log.error(f"❌ Error loading LuxTTS: {e}. Falling back to Kokoro.")
             return KokoroBackend()
     else:
         log.info("🐢 No GPU detected. Using Kokoro Backend (CPU).")
         return KokoroBackend()
 
 
-class QwenBackend:
+class LuxBackend:
     """
-    TTS Engine wrapping Qwen3-TTS (0.6B) for Voice Cloning.
-    Optimized for low-latency inference.
+    TTS Engine wrapping LuxTTS for Voice Cloning.
+    Optimized for high-quality, high-speed inference.
     """
 
     def __init__(self):
-        from qwen_tts import Qwen3TTSModel
+        log.info(f"Loading LuxTTS Model on {DEVICE}...")
 
-        log.info(f"Loading Qwen3-TTS Model [{QWEN_MODEL_ID}] on {DEVICE}...")
+        # --- Import Logic Fix ---
+        # Add the local 'LuxTTS' folder to sys.path so Python can find 'zipvoice'
+        lux_path = os.path.join(os.getcwd(), 'LuxTTS')
+        if os.path.exists(lux_path) and lux_path not in sys.path:
+            sys.path.append(lux_path)
 
-        self.model = Qwen3TTSModel.from_pretrained(
-            QWEN_MODEL_ID,
-            device_map=DEVICE,
-            torch_dtype=torch.float32,
-            attn_implementation="eager",
-        )
+        try:
+            # Try importing directly (if LuxTTS folder is in sys.path)
+            from zipvoice.luxvoice import LuxTTS
+        except ImportError:
+            try:
+                # Fallback: Try importing as a package from root
+                from LuxTTS.zipvoice.luxvoice import LuxTTS
+            except ImportError as e:
+                raise ImportError(f"Could not import LuxTTS. Checked '{lux_path}'. Error: {e}")
 
-        self.samplerate = 24000
+        # Initialize the model
+        self.tts = LuxTTS('YatharthS/LuxTTS', device='cuda')
+
+        self.samplerate = 48000
         self.voice_library = self._load_voice_library()
-        log.info(f"✅ Qwen Ready. Loaded {sum(len(v) for v in self.voice_library.values())} reference voices.")
+        log.info(f"✅ LuxTTS Ready. Loaded {sum(len(v) for v in self.voice_library.values())} reference voices.")
 
         # Warmup to speed model up
         self._warmup()
 
     def _warmup(self):
         """
-        Runs a silent, short generation to force PyTorch to compile the CUDA graphs.
-        This prevents the first user click from lagging by 10+ seconds.
+        Runs a short generation to force PyTorch to compile and librosa to init.
         """
-        log.info("🔥 Warming up GPU (this takes ~5s)...")
+        log.info("🔥 Warming up LuxTTS (takes ~10s for first run)...")
         try:
-            # Generate a very short, silent clip
-            # We use a dummy voice or the first available one
+            # Pick any key
             if "narrator" in self.voice_library:
                 voice_id = "narrator|0"
             else:
-                # Pick any key
                 first_key = list(self.voice_library.keys())[0]
                 voice_id = f"{first_key}|0"
 
@@ -112,18 +120,29 @@ class QwenBackend:
                 if text:
                     clean_lines.append(text)
 
-                audio_files = sorted(
-                    list(folder.glob("*.flac")),
-                    key=lambda x: int(re.search(r"_(\d+)\.flac", x.name).group(1)) if re.search(r"_(\d+)\.flac",
-                                                                                                x.name) else 0
-                )
+            if not clean_lines:
+                continue
 
-                for i, (text, audio_path) in enumerate(zip(clean_lines, audio_files)):
-                    library[key].append({
-                        "id": i,
-                        "text": text,
-                        "audio": str(audio_path)
-                    })
+            audio_files = sorted(
+                list(folder.glob("*.flac")),
+                key=lambda x: int(re.search(r"_(\d+)\.flac", x.name).group(1)) if re.search(r"_(\d+)\.flac",
+                                                                                            x.name) else 0
+            )
+
+            # --- Handle 1 Text vs Many Audio Files ---
+            for i, audio_path in enumerate(audio_files):
+                # If we have the specific line for this index, use it (1-to-1 match)
+                if i < len(clean_lines):
+                    text = clean_lines[i]
+                # Otherwise, reuse the first line (1-to-Many match, e.g., 1 transcript for 10 files)
+                else:
+                    text = clean_lines[0]
+
+                library[key].append({
+                    "id": i,
+                    "text": text,
+                    "audio": str(audio_path)
+                })
         return library
 
     def pick_voice(self, gender: str, race: str) -> tuple[str, str]:
@@ -160,31 +179,43 @@ class QwenBackend:
         ref_audio = ref_data["audio"]
         ref_text = ref_data["text"]
 
-        # OPTIMIZATION  Dynamic Token Limit
-        # 2048 is too high for short sentences.
-        # Approx calculation: 1 sec audio ~= 50 tokens (varies wildly, but good heuristic)
-        # We assume 1 character takes roughly 0.1s to speak.
-        # Safe buffer: 256 tokens minimum, cap at 1024 for long texts.
-        estimated_tokens = max(256, min(1024, int(len(text) * 3)))
-
         if not warmup:
-            log.info(f"🎙️ Cloning [{category}]: {text[:30]}... (max_tokens={estimated_tokens})")
+            log.info(f"🎙️ Cloning [{category}]: {text[:30]}...")
 
         try:
-            wavs, sr = self.model.generate_voice_clone(
-                text=text,
-                language="Auto",
-                ref_audio=ref_audio,
-                ref_text=ref_text,
-                max_new_tokens=estimated_tokens,  # Limit generation length
+            # Encode prompt audio
+            # We pass 'text=ref_text' so LuxTTS can skip Whisper transcription
+            encoded_prompt = self.tts.encode_prompt(
+                ref_audio, 
+                text=ref_text, 
+                rms=0.01, 
+                duration=1000
             )
 
-            self.samplerate = sr
-            if len(wavs) > 0:
-                return wavs[0]
+            # Use Configurable Padding
+            padded_text = text.strip() + TTS_PADDING
+
+            # Generate speech
+            wav_tensor = self.tts.generate_speech(
+                padded_text,
+                encoded_prompt,
+                num_steps=TTS_WAVE_STEPS,
+                speed=TTS_SPEED
+            )
+
+            # Convert to numpy array (squeeze to remove batch/channel dims if any)
+            # Ensure it is on CPU and detached
+            if hasattr(wav_tensor, 'detach'):
+                wav = wav_tensor.detach().cpu().numpy().squeeze()
+            else:
+                wav = wav_tensor.numpy().squeeze()
+
+            return wav.astype(np.float32)
 
         except Exception as e:
             log.error(f"Generation failed: {e}")
+            import traceback
+            traceback.print_exc()
 
         return np.array([], dtype=np.float32)
 
