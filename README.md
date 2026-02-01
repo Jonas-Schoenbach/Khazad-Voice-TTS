@@ -1,59 +1,68 @@
-# 🧙‍♂️ LOTRO AI Narrator
+# LOTRO Narrator
 
-**Immersive AI Voice-Over for Lord of the Rings Online**
+A smart, AI-powered narrator for *The Lord of the Rings Online*. This tool reads quest text from your screen and speaks it aloud using character-appropriate voices.
 
-This tool reads Quest Text and NPC Names from your screen and generates high-quality, race-specific AI voices (Dwarves, Elves, Hobbits, Men) in real-time.
+## Features
+* **Two AI Engines:** * **CPU Mode (Kokoro):** Fast and lightweight. Works on almost any computer.
+    * **GPU Mode (LuxTTS):** High-quality voice cloning. Requires an average NVIDIA GPU.
+* **Two Game Modes:** Supports both Official Servers (Retail) and Private Servers (Echoes).
 
-## ✨ Features
-* **Automatic Voice Selection:** Detects NPC gender and race to pick the correct voice actor.
-* **High Quality AI:** Uses `LuxTTS` (GPU) or `Kokoro` (CPU) for realistic speech.
-* **Memory:** Remembers voices for specific NPCs so they always sound the same.
-* **One-Click:** Just press your Middle Mouse Button.
+## Modes
 
----
+### 1. Echoes of Angmar (Classic Mode)
+**Best for:** Private servers or clean user interfaces.
 
-## 🚀 Installation (Windows)
+* **Trigger:** Middle Mouse Button Click.
+* **Mechanism:** OCR (Optical Character Recognition) scans the text and name on your screen.
+    * **First Run:** You must manually select the **Quest Text** area and the **NPC Name** area by drawing a box on the screen.
 
-### 1. Prerequisites
-You must have **Python 3.12** installed.
-* [Download Python 3.12 Here](https://www.python.org/downloads/release/python-31210/)
-* **IMPORTANT:** During installation, check the box **"Add Python to PATH"**.
+### 2. Retail (Live Servers)
+**Best for:** The official game servers (Live).
 
-### 2. Setup
-1.  Download this folder.
-2.  Double-click `install.bat` (Make sure you have at least 10GB of free space for packages + TTS Models).
-3.  **Select your GPU Version** when asked:
-    * Choose **[1] CUDA 12.1** for most NVIDIA cards (RTX 4070, 3060, 2060, etc.).
-    * Choose **[2] CUDA 12.8** if you have a new RTX 50-Series card.
-    * Choose **[3] CPU Only** if you don't have an NVIDIA GPU (Note: LuxTTS will be disabled).
-4.  Wait for the installation to finish.
+* **Trigger:** Automatic (triggered by game logs).
+* **Mechanism:**
+    * Watches `Script.log` for new NPC names.
+    * When an NPC is detected, it scans the screen for the Quest Window icon.
+    * If found, it reads the quest text automatically.
 
----
+## Prerequisites (Important!)
 
-## 🎮 How to Use
+Before installing, you need a few external tools to make the magic happen:
 
-1.  **Start the Tool:** Double-click `start.bat`. Wait for the message "Ready for capture".
+### 1. Tesseract OCR
+This program is required to convert images of text into actual text.
+* **Download:** [GitHub Wiki Link](https://github.com/UB-Mannheim/tesseract/wiki) (Download the Windows installer).
+* **Guide:** [How to install Tesseract on Windows](https://linuxhint.com/install-tesseract-windows/)
+* **Note:** The app expects Tesseract to be installed at the default location (`C:\Program Files\Tesseract-OCR\tesseract.exe`).
 
-2.  **In Game (First Time Only):**
-    * Find a Quest Giver and open the quest dialog.
-    * Click your **Middle Mouse Button**.
-    * The tool will ask you to draw a box around the **Quest Text**.
-    * Then, it will ask you to draw a box around the **NPC Name**.
-    * *These locations are saved automatically in `data/coords.json`.*
+### 2. getNPCNames Plugin
+This plugin is **VERY NECESSARY** for Retail Mode. It allows the AI to choose the correct voice model based on the NPC's gender and race.
+* **Download:** [Dt192.zip (Direct Link)](https://github.com/ils94/LOTROToSpeech/raw/master/Helpful%20Stuffs/Plugins/Dt192.zip) *(Credit to dt192)*
+* **Guide:** [How to install LOTRO Plugins](https://www.lotrointerface.com/wiki/Install_plugins)
 
-3.  **Playing:**
-    * Whenever you see quest text, click **Middle Mouse Button**.
-    * Listen to the narration!
+## Installation & Setup
 
----
+### Step 1: Install (Make sure you have at least 10GB of free space for the installation files such as packages and TTS models)
+1.  Double-click **`install.bat`**.
+2.  Follow the on-screen prompts:
+    * It will check for **Python 3.12** and **Git**.
+    * It will ask about your graphics card (to choose the right AI drivers).
+    * It will download the voice models.
 
-## 🛠️ Configuration
-You can tweak settings in `src/config.py` using any text editor (Notepad):
-* `TTS_SPEED`: Change how fast they speak (0.8 is default).
-* `TTS_PADDING`: Fixes issues where the voice cuts off too early.
-* `DEFAULT_VOLUME`: Process volume.
+### Step 2: Templates (Retail Mode Only)
+The project comes with default quest templates in the `templates/` folder.
+* These are small images of the Quest Window icon (like the golden ring).
+* **You usually do not need to do anything here.**
+* *Optional:* If detection fails, you can take your own screenshot of the quest icon and save it as a `.png` in this folder.
 
-## ❓ Troubleshooting
-* **"Unknown compiler" / Scipy Error:** You are likely using Python 3.13. Please install Python 3.12 and try again.
-* **It cuts off the end of sentences:** Open `src/config.py` and ensure `TTS_PADDING` is set to `" ..."`.
-* **The boxes are in the wrong place:** Delete the file `data/coords.json` to reset the screen positions.
+### Step 3: Run the Narrator
+Double-click **`start.bat`**.
+
+Follow the on-screen prompts:
+1.  **Select Audio Engine:** Choose CPU (Standard) or GPU (High Quality).
+2.  **Select Game Mode:** Choose Echoes (Classic) or Retail (Live).
+
+## Credits & Shoutouts
+* **LOTROToSpeech by ils94**: A huge shoutout to [LOTROToSpeech](https://github.com/ils94/LOTROToSpeech) for the inspiration behind this project!
+* **Kokoro**: For the incredible voice generation model. [Kokoro82M](https://huggingface.co/hexgrad/Kokoro-82M)
+* **Yatharth Sharma**: For his amazing work on the LuxTTS model and backend. [LuxTTS](https://github.com/ysharma3501/LuxTTS)
