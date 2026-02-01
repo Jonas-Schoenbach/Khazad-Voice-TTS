@@ -1,10 +1,17 @@
+# Imports
+
+# > Standard Library
+import re
+from typing import List
+
+# > Third-party Libraries
 import cv2
 import numpy as np
 import pytesseract
 import nltk
-import re
 from PIL import Image, ImageOps
-from typing import List
+
+# > Local Dependencies
 from .config import TESSERACT_CMD
 
 # Init dependencies
@@ -15,6 +22,16 @@ nltk.download("punkt", quiet=True)
 def preprocess_image(img_pil: Image.Image) -> np.ndarray:
     """
     Standard preprocessing for Quest Text (Paragraphs).
+
+    Parameters
+    ----------
+    img_pil : PIL.Image.Image
+        The input image containing the quest text.
+
+    Returns
+    -------
+    np.ndarray
+        The preprocessed binary image ready for OCR.
     """
     img_np = np.array(img_pil.convert("L"))
     # 2x scaling helps Tesseract read small game fonts
@@ -27,12 +44,21 @@ def preprocess_name_image(img_pil: Image.Image) -> np.ndarray:
     """
     Specialized preprocessing for NPC Names (Single Line).
     Strategy: Invert -> Upscale -> Padding -> Black text on White bg.
+
+    Parameters
+    ----------
+    img_pil : PIL.Image.Image
+        The input image containing the NPC nameplate.
+
+    Returns
+    -------
+    np.ndarray
+        The preprocessed image optimized for single-line OCR.
     """
     # 1. Convert to Grayscale
     gray = img_pil.convert("L")
 
     # 2. Invert: LOTRO has light text on dark bg.
-    # Tesseract reads Black text on White bg much better.
     inverted = ImageOps.invert(gray)
     img_np = np.array(inverted)
 
@@ -52,32 +78,83 @@ def preprocess_name_image(img_pil: Image.Image) -> np.ndarray:
 def clean_ocr_errors(sentences: List[str]) -> List[str]:
     """
     Corrects common OCR mistakes specific to LOTRO fonts.
+
+    Parameters
+    ----------
+    sentences : List[str]
+        A list of raw strings detected by Tesseract.
+
+    Returns
+    -------
+    List[str]
+        The cleaned list of strings.
     """
+    # Map of direct string replacements
+    replacements = {
+        "|": "I",
+        "‘": "'",
+        "’": "'",
+        "'T": "'I",
+        "1": "I",
+        "'Ihe": "The",
+        "REWARDS": "",
+        "'l": "I",  # Fix 'l -> I
+    }
+
     cleaned = []
     for s in sentences:
-        s = s.replace("|", "I").replace("‘", "'").replace("’", "'").replace("'T","'I").replace("1","I").replace("'Ihe","The").replace("REWARDS","")
+        # Apply direct replacements
+        for old, new in replacements.items():
+            s = s.replace(old, new)
+
+        # Regex fixes for context-dependent errors
         s = re.sub(r"'lam\b", "I am", s, flags=re.IGNORECASE)
-        s = re.sub(r"'l\b", "I", s)
-        s = re.sub(r"\bgoad\b", "good", s)
-        cleaned.append(s.strip())
+        s = re.sub(r"\bgoad\b", "good", s, flags=re.IGNORECASE)
+
+        s = s.strip()
+        if s:
+            cleaned.append(s)
+
     return cleaned
 
 
 def run_ocr(img_pil: Image.Image) -> List[str]:
     """
-    For QUEST TEXT (Multiple sentences).
+    Executes OCR on an image containing quest text (multiple sentences).
+
+    Parameters
+    ----------
+    img_pil : PIL.Image.Image
+        The source image.
+
+    Returns
+    -------
+    List[str]
+        A list of cleaned sentences extracted from the image.
     """
     thresh = preprocess_image(img_pil)
     raw = pytesseract.image_to_string(thresh, config="--psm 6")
+
+    # Merge newlines to handle paragraph wrapping, then re-tokenize
     merged_block = re.sub(r"\s*\n\s*", " ", raw).strip()
     sentences = nltk.sent_tokenize(merged_block)
+
     return [line for line in clean_ocr_errors(sentences) if len(line) > 1]
 
 
 def run_name_ocr(img_pil: Image.Image) -> str:
     """
-    For NPC NAMES (Single Line).
-    Uses PSM 7 (Single Line) and specialized preprocessing.
+    Executes OCR on an image containing a single NPC name.
+
+    Parameters
+    ----------
+    img_pil : PIL.Image.Image
+        The source image.
+
+    Returns
+    -------
+    str
+        The detected NPC name.
     """
     thresh = preprocess_name_image(img_pil)
 
@@ -87,8 +164,7 @@ def run_name_ocr(img_pil: Image.Image) -> str:
     # Basic cleanup: remove newlines and surrounding whitespace
     clean = raw.strip().replace("\n", " ")
 
-    # Fix common Name OCR glitches
-    # e.g. "PED" -> "TED" is hard to regex without context, but we can fix symbols
+    # Fix symbols common in name plates
     clean = clean.replace("|", "I").replace("1", "I")
 
     return clean

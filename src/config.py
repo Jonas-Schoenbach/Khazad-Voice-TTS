@@ -11,8 +11,13 @@ SAMPLES_DIR = DATA_DIR / "screenshots"
 REF_AUDIO_DIR = DATA_DIR / "reference_audio"
 NPC_DATA_PATH = DATA_DIR / "npc_data.csv"
 
+# Retail Mode Paths
+SCRIPT_LOG = os.path.expanduser(r"~\Documents\The Lord of the Rings Online\Script.log")
+TEMPLATES_DIR = BASE_DIR / "templates"
+
 # --- DEVICE ---
 import torch
+
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 # --- AUDIO SETTINGS ---
@@ -20,19 +25,19 @@ SAMPLE_RATE = 24000
 DEFAULT_VOLUME = 0.3
 
 # --- TTS SETTINGS ---
-TTS_SPEED = 0.8        # Lower speed to prevent cutoffs
-TTS_PADDING = " ..."   # Text added to end of sentences to catch silence tails
-TTS_WAVE_STEPS = 8    # Quality steps
+TTS_SPEED = 0.8  # Lower speed to prevent cutoffs
+TTS_PADDING = " ..."  # Text added to end of sentences to catch silence tails
+TTS_WAVE_STEPS = 8  # Quality steps
 
 # --- OCR SETTINGS (Restored) ---
 # We check standard Windows paths to find Tesseract automatically
 possible_paths = [
     r"C:\Program Files\Tesseract-OCR\tesseract.exe",
     r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
-    r"C:\Users\admin\AppData\Local\Programs\Tesseract-OCR\tesseract.exe"
+    r"C:\Users\admin\AppData\Local\Programs\Tesseract-OCR\tesseract.exe",
 ]
 
-TESSERACT_CMD = r"C:\Program Files\Tesseract-OCR\tesseract.exe" # Default fallback
+TESSERACT_CMD = r"C:\Program Files\Tesseract-OCR\tesseract.exe"  # Default fallback
 
 for p in possible_paths:
     if os.path.exists(p):
