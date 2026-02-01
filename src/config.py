@@ -4,29 +4,40 @@
 import os
 from pathlib import Path
 
-# > Third-party imports
-import torch
-
-# Path Configuration
+# --- PATHS ---
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
+SAMPLES_DIR = DATA_DIR / "screenshots"
+REF_AUDIO_DIR = DATA_DIR / "reference_audio"
 NPC_DATA_PATH = DATA_DIR / "npc_data.csv"
-SAMPLES_DIR = DATA_DIR / "samples"
 
-# External Tool Paths (Adjust if installed elsewhere)
-# Tesseract OCR
-TESSERACT_CMD = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-if not os.path.exists(TESSERACT_CMD):
-    # Fallback to local app data if Program Files fails
-    TESSERACT_CMD = r"C:\Users\admin\AppData\Local\Programs\Tesseract-OCR\tesseract.exe"
-
-# eSpeak-NG (Critical for Kokoro)
-ESPEAK_PATH = r"C:\Program Files\eSpeak NG\espeak-ng.exe"
-if os.path.exists(ESPEAK_PATH):
-    os.environ["PHONEMIZER_ESPEAK_PATH"] = ESPEAK_PATH
-
-# Hardware Settings
-# Automatically select CUDA (GPU) if available, otherwise CPU
+# --- DEVICE ---
+import torch
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+# --- AUDIO SETTINGS ---
 SAMPLE_RATE = 24000
-DEFAULT_VOLUME = 0.1
+DEFAULT_VOLUME = 0.3
+
+# --- TTS SETTINGS ---
+TTS_SPEED = 0.8        # Lower speed to prevent cutoffs
+TTS_PADDING = " ..."   # Text added to end of sentences to catch silence tails
+TTS_WAVE_STEPS = 8    # Quality steps
+
+# --- OCR SETTINGS (Restored) ---
+# We check standard Windows paths to find Tesseract automatically
+possible_paths = [
+    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+    r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+    r"C:\Users\admin\AppData\Local\Programs\Tesseract-OCR\tesseract.exe"
+]
+
+TESSERACT_CMD = r"C:\Program Files\Tesseract-OCR\tesseract.exe" # Default fallback
+
+for p in possible_paths:
+    if os.path.exists(p):
+        TESSERACT_CMD = p
+        break
+
+# --- LOGGING ---
+LOG_LEVEL = "INFO"
