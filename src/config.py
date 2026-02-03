@@ -25,9 +25,8 @@ SAMPLE_RATE = 24000
 DEFAULT_VOLUME = 0.3
 
 # --- TTS SETTINGS ---
-TTS_SPEED = 0.8  # Lower speed to prevent cutoffs
-TTS_PADDING = " ..."  # Text added to end of sentences to catch silence tails
-TTS_WAVE_STEPS = 8  # Quality steps
+TTS_SPEED = 1.2  # Lower speed to prevent cutoffs
+TTS_WAVE_STEPS = 10  # Quality steps
 
 # --- OCR SETTINGS (Restored) ---
 # We check standard Windows paths to find Tesseract automatically

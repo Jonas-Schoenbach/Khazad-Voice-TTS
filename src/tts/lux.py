@@ -14,7 +14,7 @@ import numpy as np
 from src.utils import setup_logger
 from src.config import (
     DEVICE, REF_AUDIO_DIR, TTS_SPEED,
-    TTS_PADDING, TTS_WAVE_STEPS
+    TTS_WAVE_STEPS
 )
 from .base import TTSBackend
 
@@ -244,11 +244,9 @@ class LuxBackend(TTSBackend):
                 ref_audio, text=ref_text, rms=0.01, duration=1000
             )
 
-            padded_text = text.strip() + TTS_PADDING
-
             # Generate speech
             wav_tensor = self.tts.generate_speech(
-                padded_text,
+                text,
                 encoded_prompt,
                 return_smooth=True,
                 num_steps=TTS_WAVE_STEPS,

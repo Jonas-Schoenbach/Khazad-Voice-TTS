@@ -99,6 +99,7 @@ def clean_ocr_errors(sentences: List[str]) -> List[str]:
         "'Ihe": "The",
         "REWARDS": "",
         "'l": "I",  # Fix 'l -> I
+        "Iam": "I am",
     }
 
     cleaned = []
