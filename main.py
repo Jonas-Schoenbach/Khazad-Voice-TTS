@@ -56,15 +56,15 @@ def main():
 
     # 3. Select Game Mode
     print("\n[SELECT GAME MODE]")
-    print("1. Echoes of Angmar (Classic/Private)")
-    print("   -> Trigger: Middle Mouse Click")
-    print("   -> Mechanism: OCR Reading")
-    print("2. Retail / Live (Official)")
+    print("1. Retail / Live (Official)")
     print("   -> Trigger: Automatic (via Log)")
     print("   -> Mechanism: Log Watcher + Template Check")
+    print("2. Echoes of Angmar (Classic/Private)")
+    print("   -> Trigger: Middle Mouse Click")
+    print("   -> Mechanism: OCR Reading")
 
     choice = input("\nEnter choice (1 or 2): ").strip()
-    is_retail = choice == "2"
+    is_retail = choice == "1"
 
     # Define mode string and Instantiate Engine
     current_mode = "retail" if is_retail else "echoes"
