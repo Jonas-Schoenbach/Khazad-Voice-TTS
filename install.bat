@@ -91,30 +91,25 @@ if "%choice%"=="1" (
     pip install torch torchvision torchaudio
 )
 
-:: --- 3. LuxTTS Setup (NEW) ---
+:: --- 3. LuxTTS Setup ---
 echo.
 echo [4/5] Setting up LuxTTS...
 
 if not exist "LuxTTS" (
-    echo Cloning LuxTTS repository...
-    git clone https://github.com/ysharma3501/LuxTTS.git
+    echo [INFO] LuxTTS not found. Cloning from GitHub...
+    git clone https://github.com/Thelukepet/LuxTTS.git
+) else (
+    echo [INFO] LuxTTS folder exists. Checking for updates...
+    cd LuxTTS
+    :: This ensures your local copy matches your GitHub fork
+    git pull origin main
+    cd ..
 )
 
-:: Enter folder and set specific commit
-cd LuxTTS
-echo Checking out optimization commit (Skip Whisper)...
-git checkout f3810f535fbb09e18902964270753c3a406a1c9c
-cd ..
-
-if exist "LuxTTS\requirements.txt" (
-    echo Installing LuxTTS dependencies...
-    pip install -r LuxTTS\requirements.txt
-)
-
-:: --- 4. Main Requirements ---
-echo.
-echo [5/5] Installing Main Project Requirements...
-pip install -r requirements.txt
+:: Re-installing dependencies in case the requirements.txt changed
+echo Installing/Updating LuxTTS dependencies...
+pip install -r LuxTTS\requirements.txt
+pip install -e LuxTTS
 
 echo.
 echo ==================================================
