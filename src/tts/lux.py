@@ -241,7 +241,7 @@ class LuxBackend(TTSBackend):
         try:
             # Encode the reference audio for style transfer
             encoded_prompt = self.tts.encode_prompt(
-                ref_audio, text=ref_text, rms=0.01, duration=1000
+                ref_audio, text=ref_text, rms=0.001, duration=1000
             )
 
             # Generate speech

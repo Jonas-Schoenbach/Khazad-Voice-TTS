@@ -50,7 +50,7 @@ if "%choice%"=="1" (
     pip install torch torchvision torchaudio
 )
 
-:: --- 3. LuxTTS Setup (Khazad Edition) ---
+:: --- 3. LuxTTS Setup ---
 echo.
 echo [4/5] Summoning the Voice (Setting up LuxTTS)...
 
@@ -77,5 +77,5 @@ echo.
 echo ==================================================
 echo           INSTALLATION COMPLETE!
 echo ==================================================
-echo The Khazad Voice is ready. Run "start.bat" to begin.
+echo The Khazad Voice TTS is ready. Run "start.bat" to begin.
 pause
