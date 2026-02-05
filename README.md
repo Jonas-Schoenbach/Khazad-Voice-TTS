@@ -3,7 +3,14 @@
 
 **Khazad Voice TTS** is an external utility designed to provide real-time narration for *The Lord of the Rings Online* (LOTRO). By combining Optical Character Recognition (OCR) with advanced Text-to-Speech (TTS) models, this tool captures quest text from your screen and narrates it aloud using context-aware AI voices.
 
-Showcase: [Khazad Voice TTS Showcase Video](https://www.youtube.com/watch?v=YOUR_VIDEO_ID)
+GPU model demo (LuxTTS)
+
+[![Khazad Voice TTS Showcase](https://img.youtube.com/vi/LlAibQ_TlY4/0.jpg)](https://www.youtube.com/watch?v=LlAibQ_TlY4)
+
+CPU model demo (Kokoro82M)
+
+[![Khazad Voice TTS Showcase](https://img.youtube.com/vi/aR_5aRTrMQg/0.jpg)](https://www.youtube.com/watch?v=aR_5aRTrMQg)
+
 
 ## Key Features
 
@@ -57,6 +64,7 @@ Run **`start.bat`** to launch the application. You will be prompted to select yo
 ### 1. Retail (Live Servers)
 *Designed for official game servers.*
 
+* **First startup:** The script will take a screenshot of your primary screen. Draw the box around the quest window as shown in the above video demo's.
 * **Trigger:** Automatic (Log-based).
 * **Mechanism:**
     1.  Monitors the game's `Script.log` file to detect when an NPC interaction begins.
@@ -72,10 +80,40 @@ The `templates/` folder contains reference images for the Quest Window icon.
 ### 2. Echoes of Angmar (Classic Mode)
 *Designed for private servers or clean/custom user interfaces.*
 
+* **First startup:** The script will take a screenshot of your primary screen. Draw one box around the quest window as shown in the above video demo's and one box around the NPC's name as below:
+
+
 * **Trigger:** Middle Mouse Button Click.
 * **Mechanism:** Uses manual screen region detection.
 * **First Run Setup:** Upon the first launch, you must draw a bounding box around the **Quest Text** area and the **NPC Name** area on your screen to calibrate the OCR.
 
+
+## FAQ & Troubleshooting
+
+Q: How do I reset the Quest Window coordinates? If you need to recalibrate the screen region detection, simply delete the `coords_retail.json` file located in the Khazad-Voice-TTS data folder. The application will prompt you to redraw the box on the next launch.
+
+Q: How do I reset the NPC Voice Memory? To wipe the saved voice associations for NPCs (resetting who sounds like what), delete the `npc_memory_retail.json` file from the data folder.
+
+Q: Can I add my own custom voice references? Yes! You can add your own voice samples to the library to be used for cloning/generation. 
+1. Navigate to the reference_audio directory. 
+2. Open the specific Race and Gender folder you want to customize. 
+3. Drop your audio files there. Supported formats: .wav and .flac.
+
+## Future Roadmap
+* **Narrator & NPC Voice Splitting**: Intelligent detection to distinguish between spoken dialogue (quoted text) and descriptive text (unquoted). The goal is to use a general "Narrator" voice for descriptions and switch to the specific NPC voice for dialogue within the same window.
+
+
+* **Configuration UI**: A user-friendly interface to adjust reading speed, audio quality, and emotion settings without editing code.
+  * Tip: You can currently adjust these settings manually in config.py (requires restarting the application to take effect).
+
+
+* **Media Hotkeys**: Global shortcuts to stop the current audio or re-play the previous line.
+
+
+* **Quest History Plugin**: An in-game LOTRO plugin to display the last ~10 narrated quests, allowing you to "queue" them up and listen to them later (perfect for when you accept multiple quests at once and don't want to stand still).
+
+
+* **Community Requests**: More features based on your feedback!
 
 ---
 
