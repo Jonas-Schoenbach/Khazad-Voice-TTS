@@ -19,8 +19,24 @@ if %errorlevel% neq 0 (
     exit
 )
 
-:: ... (Keep your Python checks exactly as they were) ...
+:: Try to find Python 3.12 (preferred) or fallback to system python
+set PYTHON_CMD=python
+py -3.12 --version >nul 2>&1
+if %errorlevel%==0 (
+    echo [INFO] Found Python 3.12 via launcher.
+    set PYTHON_CMD=py -3.12
+) else (
+    :: Fallback check
+    python --version >nul 2>&1
+    if !errorlevel! neq 0 (
+        echo [ERROR] Python is not installed or not in PATH.
+        echo Please install Python 3.12 and tick "Add to PATH".
+        pause
+        exit
+    )
+)
 
+echo [INFO] Using Python: %PYTHON_CMD%
 echo.
 echo [1/5] Igniting the Forge (Creating Virtual Environment)...
 %PYTHON_CMD% -m venv venv
