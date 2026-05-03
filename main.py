@@ -3,10 +3,7 @@
 # > Standard Library
 import argparse
 import os
-import sys
-
-from pathlib import Path
-from threading import Event
+import threading
 
 # > Local Dependencies
 import src.calibrate_echoes as echoes_calibrator
@@ -17,19 +14,16 @@ from src.engine_startup import EngineStartup
 from src.utils import setup_logger
 from src.voice_lab.ui import create_ui
 
-# Force AI models to download into the local installation folder
-_install_dir = Path(__file__).resolve().parent
-os.environ["HF_HOME"] = str(_install_dir / "models" / "huggingface")
-os.environ["TORCH_HOME"] = str(_install_dir / "models" / "torch")
-
-# Ensure src is in python path
-sys.path.append(str(_install_dir))
+# Force AI models to download into the home directory
+_data_dir = os.path.join(os.path.expanduser("~"), ".khazad-voice-tts")
+os.environ["HF_HOME"] = os.path.join(_data_dir, "models", "huggingface")
+os.environ["TORCH_HOME"] = os.path.join(_data_dir, "models", "torch")
 
 log = setup_logger("MAIN")
 
 # Shared events for cross-thread signaling
-capture_trigger = Event()  # Echoes mode: middle-click
-retail_capture_trigger = Event()  # Retail static mode: middle-click
+capture_trigger = threading.Event()  # Echoes mode: middle-click
+retail_capture_trigger = threading.Event()  # Retail static mode: middle-click
 
 
 def main():
