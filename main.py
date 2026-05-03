@@ -9,6 +9,10 @@ from pathlib import Path
 from threading import Event
 
 # > Local Dependencies
+import src.calibrate_echoes as echoes_calibrator
+import src.calibrate_retail as retail_calibrator
+import src.calibrate_static as static_calibrator
+
 from src.engine_startup import EngineStartup
 from src.utils import setup_logger
 from src.voice_lab.ui import create_ui
@@ -43,7 +47,13 @@ def main():
     if args.mode:
         EngineStartup(args.mode, get_device_arg(args))
     elif args.calibrate:
-        print("Not implemented yet.")
+        match args.calibrate:
+            case "retail":
+                retail_calibrator.main()
+            case "echoes":
+                echoes_calibrator.main()
+            case "static":
+                static_calibrator.main()
     elif args.voice_lab:
         voice_lab = create_ui()
         voice_lab.launch(inbrowser=True)
