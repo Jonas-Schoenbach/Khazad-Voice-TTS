@@ -10,10 +10,7 @@ from threading import Event
 from pynput import keyboard, mouse
 
 # > Local Dependencies
-from src.config import (
-    NPC_NAME_MAX_AGE,
-    SCRIPT_LOG,
-)
+from src.config.ConfigManager import ConfigManager
 from src.db import NPCDatabase
 from src.engine import NarratorEngine
 from src.tts import get_tts_backend
@@ -33,6 +30,10 @@ class EngineStartup:
     def __init__(self, mode: str, device: str):
         self.mode = mode
         self.device = device
+
+        cfg = ConfigManager()
+        self.npc_name_max_age = cfg.get_int("TTSSettings", "npc_name_max_age", fallback=60)
+        self.script_log = cfg.get_str("DefaultRetailMode", "plugin_script_log_path")
 
         try:
             db = NPCDatabase()
@@ -87,7 +88,7 @@ class EngineStartup:
         print(f"Window Mode: {self.mode.upper()}")
         print("Detection : Template matching (finds window anywhere)")
         print("Trigger   : Automatic (NPC appears in Script.log)")
-        print(f"Watching  : {SCRIPT_LOG}")
+        print(f"Watching  : {self.script_log}")
         print()
         print("1. Ensure 'getNPCNames' plugin is installed.")
         print("2. Open a quest dialog with any NPC.")
@@ -143,7 +144,7 @@ class EngineStartup:
 
         watcher_thread = threading.Thread(
             target=watch_npc_file,
-            args=(npc_found_callback, SCRIPT_LOG),
+            args=(npc_found_callback, self.script_log),
             daemon=True,
         )
         watcher_thread.start()
@@ -236,7 +237,7 @@ class EngineStartup:
 
         watcher_thread = threading.Thread(
             target=watch_npc_file,
-            args=(npc_log_callback, SCRIPT_LOG),
+            args=(npc_log_callback, self.script_log),
             daemon=True,
         )
         watcher_thread.start()
@@ -256,7 +257,7 @@ class EngineStartup:
                         if (
                                 npc_tracking["name"] != "[MANUAL]"
                                 and time.time() - npc_tracking["time"]
-                                <= NPC_NAME_MAX_AGE
+                                <= self.npc_name_max_age
                         ):
                             npc_name = f"{npc_tracking['name']}"
                             log.info(f"Using tracked NPC: {npc_name}")
