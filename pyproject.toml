@@ -81,7 +81,7 @@ test = [
 ]
 
 [project.scripts]
-khazad = "main:main"
+khazad = "src:start_cli"
 
 # ---------------------------------------------------------------------------
 # Setuptools – tells the build backend where packages live.

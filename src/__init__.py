@@ -10,6 +10,7 @@ every runtime dependency (numpy, torch, kokoro, …) installed.
 
 import importlib as _importlib
 
+from .khazad_cli import KhazadCLI
 from .models import NPC, QuestText, QuestTextLine, TextSourceType, VoiceSelection
 
 __all__ = [
@@ -50,3 +51,10 @@ def __getattr__(name):
         globals()[name] = mod
         return mod
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+def start_cli():
+    cli = KhazadCLI()
+    cli.start()
+
+if __name__ == "__main__":
+    start_cli()
