@@ -1,7 +1,7 @@
 @echo off
 cd /d "%~dp0.."
 
-title KHAZAD VOICE - RETAIL MODE
+title KHAZAD VOICE - STATIC MODE
 color 0E
 
 :: Check Environment
@@ -11,20 +11,20 @@ if not exist venv (
     exit
 )
 
-echo [INFO] Starting Retail Mode...
+echo [INFO] Starting Static Mode...
 echo.
-echo   1. Retail Mode
-echo   2. Retail Mode + Voice Mix [Experimental]
+echo   1. Static Mode
+echo   2. Static Mode + Voice Mix [Experimental]
 echo.
 set /p choice="Enter choice (1 or 2): "
 
 if "%choice%"=="2" (
-    echo [INFO] Starting Retail Mode with Voice Mix...
+    echo [INFO] Starting Static Mode with Voice Mix...
     call venv\Scripts\activate.bat
-    python main.py --mode retail --voice-mix
+    python main.py --mode static --voice-mix
 ) else (
-    echo [INFO] Starting Retail Mode...
+    echo [INFO] Starting Static Mode...
     call venv\Scripts\activate.bat
-    python main.py --mode retail
+    python main.py --mode static
 )
 pause

@@ -32,11 +32,11 @@ class NarratorEngine:
     db : Database
         The NPC database interface for race/gender lookups.
     tts : TTSBackend
-        The initialized Text-to-Speech backend (e.g., Kokoro, Lux).
+        The initialized Text-to-Speech backend (e.g., Kokoro, OmniVoice).
     mode : str
         The operation mode ('echoes' for manual, 'retail' for auto).
     backend_id: str
-        The backend identifier (e.g., 'kokoro', 'lux').
+        The backend identifier (e.g., 'kokoro', 'omnivoice').
     memory : dict
         A runtime cache of NPC-to-Voice mappings to ensure consistency.
     audio_queue : queue.Queue
@@ -45,7 +45,7 @@ class NarratorEngine:
        An event to signal the engine to stop processing.
     """
 
-    def __init__(self, db, tts_backend, mode="echoes"):
+    def __init__(self, db, tts_backend, mode="echoes", voice_mix=False):
         """
         Initializes the NarratorEngine.
 
@@ -57,15 +57,19 @@ class NarratorEngine:
             Instance of the TTS model wrapper.
         mode : str, optional
             The game mode configuration, by default "echoes".
+        voice_mix : bool, optional
+            When True, quoted dialogue uses the NPC voice and narration
+            uses a narrator voice.  Experimental feature.
         """
         self.db = db
         self.tts = tts_backend
         self.mode = mode
+        self.voice_mix = voice_mix
 
-        self.backend_id = getattr(self.tts, "backend_id", "lux")
+        self.backend_id = getattr(self.tts, "backend_id", "omnivoice")
 
         self.memory = load_npc_memory(self.mode, self.backend_id)
-        log.info(f"🧠 Loaded Memory for mode: {self.mode} | Backend: {self.backend_id}")
+        log.info(f"Loaded memory for mode: {self.mode} | Backend: {self.backend_id}")
 
         self.audio_queue = queue.Queue()
         self.stop_event = threading.Event()
@@ -77,7 +81,7 @@ class NarratorEngine:
         """
         Immediate stop: Wipes the queue, kills the producer, and kills audio hardware.
         """
-        log.info("🛑 Stop requested. Interrupting playback...")
+        log.info("Stop requested. Interrupting playback...")
 
         # 1. Signal threads to stop
         self.stop_event.set()
@@ -93,7 +97,7 @@ class NarratorEngine:
         #    immediately re-firing after F12 wipe)
         self._suppress_until = time.time() + 2.0
 
-        log.info("🛑 Audio queue wiped and playback stopped.")
+        log.info("Audio queue wiped and playback stopped.")
 
     def process_capture(self, quest_img_pil, name_img_pil):
         """
@@ -127,7 +131,7 @@ class NarratorEngine:
         log.info("Reading NPC Name...")
         npc_name = run_name_ocr(name_img_pil) or "Unknown"
         quest_text.npc_name = npc_name
-        log.info(f"📝 NPC Name: '{npc_name}'")
+        log.info(f"NPC Name: '{npc_name}'")
 
         voice_selection = self._resolve_voice(npc_name)
         self._start_streaming(quest_text, voice_selection)
@@ -160,7 +164,7 @@ class NarratorEngine:
         # In static mode, title_pil may be None (we only extract body)
         # In auto mode, both should be present
         if not body_pil:
-            log.info("🙈 NPC in log, but valid Quest Window not found.")
+            log.info("NPC in log, but valid Quest Window not found.")
             return
 
         # 2. OCR Body (Always needed for fallback/reference)
@@ -175,40 +179,65 @@ class NarratorEngine:
         source_type = TextSourceType.OCR
         quest_title = None
 
-        # 3. Wiki Logic (Conditional)
+        # 3. Wiki Logic (Non-blocking)
+        #    Start TTS with OCR immediately.  If wiki data arrives in time
+        #    (within 2 seconds), use it instead.  Otherwise cache it for the
+        #    next interaction with this quest.
         _cfg = ConfigManager()
         enable_wiki = _cfg.get_bool("WikiSettings", "enable_wiki", fallback=False)
+        wiki_result = {}
+
         if enable_wiki and title_pil is not None:
-            # OCR Title only if we need Wiki
             quest_title = run_title_ocr(title_pil)
-            log.info(f"📜 Quest Title: '{quest_title}'")
-            log.info("🌍 Checking Wiki...")
+            log.info(f"Quest Title: '{quest_title}'")
+            log.info("Checking Wiki (background)...")
 
             wiki_url = wiki.get_best_wiki_url(quest_title)
-            stages = wiki.fetch_quest_data(wiki_url)
 
-            if stages:
-                best_stage, matched_text, accuracy = wiki.get_best_match(
-                    full_ocr_text, stages
-                )
-
-                # Smart Fallback Logic
-                if accuracy >= 50.0 and not wiki.has_name_placeholder(matched_text):
-                    final_text = matched_text
-                    source_label = f"Wiki ({best_stage}, {accuracy:.1f}%)"
-                    source_type = TextSourceType.WIKI
-                elif wiki.has_name_placeholder(matched_text):
-                    source_label = "OCR (Wiki had placeholder)"
-                else:
-                    source_label = f"OCR (Low Wiki Acc: {accuracy:.1f}%)"
+            # Check cache first (instant, no network)
+            if wiki_url in wiki.WIKI_CACHE:
+                wiki_result = wiki.WIKI_CACHE[wiki_url]
+                if wiki_result:
+                    log.info("Wiki data loaded from cache.")
             else:
-                source_label = "OCR (No Wiki Data)"
-        elif enable_wiki and title_pil is None:
-            log.info("⏩ Skipping Wiki Lookup (Static mode - no title)")
-        else:
-            log.info("⏩ Skipping Wiki Lookup (Config Disabled)")
+                # Fetch in background thread
+                wiki_result = {}
 
-        log.info(f"✅ Source: {source_label}")
+                def _fetch_wiki():
+                    nonlocal wiki_result
+                    wiki_result = wiki.fetch_quest_stages(wiki_url)
+
+                wiki_thread = threading.Thread(target=_fetch_wiki, daemon=True)
+                wiki_thread.start()
+                wiki_thread.join(timeout=2.0)  # Wait max 2 seconds
+
+                if wiki_thread.is_alive():
+                    log.info(
+                        "Wiki fetch still running — starting with OCR. "
+                        "Wiki data will be cached for next time."
+                    )
+        elif enable_wiki and title_pil is None:
+            log.info("Skipping Wiki Lookup (Static mode - no title)")
+        else:
+            log.info("Skipping Wiki Lookup (Config Disabled)")
+
+        # Resolve final text source
+        if wiki_result:
+            best_stage, matched_text, accuracy = wiki.get_best_match(
+                full_ocr_text, wiki_result
+            )
+            if accuracy >= 50.0 and not wiki.has_name_placeholder(matched_text):
+                final_text = matched_text
+                source_label = f"Wiki ({best_stage}, {accuracy:.1f}%)"
+                source_type = TextSourceType.WIKI
+            elif wiki.has_name_placeholder(matched_text):
+                source_label = "OCR (Wiki had placeholder)"
+            else:
+                source_label = f"OCR (Low Wiki Acc: {accuracy:.1f}%)"
+        elif enable_wiki and title_pil is not None:
+            source_label = "OCR (No Wiki Data)"
+
+        log.info(f"Source: {source_label}")
 
         # 4. Build QuestText model
         final_sentences = nltk.sent_tokenize(final_text)
@@ -261,17 +290,19 @@ class NarratorEngine:
             voice_id = self.memory[key]["voice_id"]
             category = self.memory[key].get("category", "")
 
-            # If we are on Kokoro (CPU) but found a Lux ID (contains '|'), force a re-roll.
+            # If we are on Kokoro (CPU) but found an OmniVoice ID (contains '|'),
+            # force a re-roll.
             if self.backend_id == "kokoro" and "|" in voice_id:
                 log.warning(
-                    f"⚠️ Found invalid Lux ID '{voice_id}' for Kokoro backend. Re-assigning voice."
+                    f"Found invalid OmniVoice ID '{voice_id}' for Kokoro backend. "
+                    f"Re-assigning voice."
                 )
             elif (
-                self.backend_id == "lux"
+                self.backend_id == "omnivoice"
                 and "|" not in voice_id
                 and voice_id != "default"
             ):
-                # If on Lux but found a Kokoro ID (no pipe), allow re-roll logic (optional)
+                # If on OmniVoice but found a Kokoro ID (no pipe), allow re-roll.
                 pass
             else:
                 matched_name = self.memory[key].get("name", npc_name)
@@ -312,13 +343,48 @@ class NarratorEngine:
             is_default=is_default,
         )
 
+    @staticmethod
+    def _tag_quoted_lines(quest_text: QuestText) -> None:
+        """
+        Tags each QuestTextLine with ``is_quoted`` using a state machine.
+
+        LOTRO wiki dialogue uses single quotes (``'``) to mark NPC speech that
+        can span multiple sentences.  A leading ``'`` opens a dialogue block;
+        a trailing ``'`` closes it.  Apostrophes inside words (e.g. "can't")
+        are ignored because they never appear at the absolute start/end of the
+        text.
+
+        Rules applied per line (in order):
+        1. If the line starts with ``'``  → enter dialogue mode.
+        2. The line is marked quoted / unquoted based on the current state.
+        3. If the line ends with ``'`` and we are in dialogue mode → exit.
+
+        Parameters
+        ----------
+        quest_text : QuestText
+            The quest text whose lines will be tagged in-place.
+        """
+        in_quote = False
+        for line in quest_text.lines:
+            stripped = line.text.strip()
+            starts = stripped.startswith("'")
+            ends = stripped.endswith("'")
+
+            if starts:
+                in_quote = True
+
+            line.is_quoted = in_quote
+
+            if ends and in_quote:
+                in_quote = False
+
     def _start_streaming(self, quest_text: QuestText, voice_selection: VoiceSelection):
         """
         Starts the audio generation and playback pipeline.
 
-        Uses a Producer-Consumer model:
-        - The Producer (Thread) generates audio using the TTS model.
-        - The Consumer (Main Loop) pulls audio from the queue and plays it.
+        Uses a Producer-Consumer model with dual-voice support:
+        - Quoted text (NPC dialogue) uses the NPC's voice.
+        - Non-quoted text (narration) uses the narrator voice.
 
         Parameters
         ----------
@@ -326,47 +392,73 @@ class NarratorEngine:
             The quest text model containing parsed lines.
         voice_selection : VoiceSelection
             The voice selection object for the NPC.
-
-        # TODO: Future feature - separate quoted vs narrator voice
-        # Currently all text uses the NPC voice. When quote detection is
-        # implemented, quoted text will use NPC voice and non-quoted text
-        # will use a separate narrator voice.
         """
         # Guard: if stop was recently requested, suppress this auto-trigger
         if time.time() < self._suppress_until:
-            log.info("⏸️ Suppressed auto-trigger (recent F12 stop)")
+            log.info("Suppressed auto-trigger (recent F12 stop)")
             return
 
         # Reset stop event for new playback
         self.stop_event.clear()
 
-        # TODO: Future feature - implement narrator voice selection
-        # narrator_voice_id = self._get_narrator_voice()  # Not yet implemented
-        # For now, all text uses the NPC voice
-        voice_id = voice_selection.voice_id
+        npc_voice_id = voice_selection.voice_id
+
+        # --- Voice Mix (Experimental) ---
+        # When enabled, quoted dialogue uses the NPC voice and narration
+        # uses a separate narrator voice.  When disabled, all lines use
+        # the NPC voice (stable behaviour).
+        if self.voice_mix:
+            self._tag_quoted_lines(quest_text)
+            narrator_voice_id, _ = self.tts.pick_narrator_voice()
+
+            quoted_count = sum(1 for line in quest_text.lines if line.is_quoted)
+            narrator_count = len(quest_text.lines) - quoted_count
+            log.info(
+                f"[VOICE MIX] Lines: {quoted_count} quoted (NPC) / "
+                f"{narrator_count} narration | NPC voice={voice_selection.category}"
+            )
+        else:
+            narrator_voice_id = None
+
+        def _voice_for_line(line: QuestTextLine) -> str:
+            """Return the appropriate voice ID for a line."""
+            if not self.voice_mix:
+                return npc_voice_id
+            return npc_voice_id if line.is_quoted else narrator_voice_id
 
         def producer():
             clean_lines = [line for line in quest_text.lines if line.text.strip()]
 
-            if self.backend_id == "lux":
+            if self.backend_id == "omnivoice":
                 chunk_size = 2
                 for i in range(0, len(clean_lines), chunk_size):
                     if self.stop_event.is_set():
                         return
                     batch = clean_lines[i : i + chunk_size]
-                    full_text = " ".join(line.text for line in batch)
-                    if full_text:
-                        audio = self.tts.generate(full_text, voice_id)
-                        if self.stop_event.is_set():
-                            return
-                        self.audio_queue.put(
-                            (full_text, audio, self.tts.samplerate, batch)
-                        )
+                    # Group consecutive lines that share the same voice
+                    j = 0
+                    while j < len(batch):
+                        voice = _voice_for_line(batch[j])
+                        group = [batch[j]]
+                        k = j + 1
+                        while k < len(batch) and _voice_for_line(batch[k]) == voice:
+                            group.append(batch[k])
+                            k += 1
+                        full_text = " ".join(line.text for line in group)
+                        if full_text:
+                            audio = self.tts.generate(full_text, voice)
+                            if self.stop_event.is_set():
+                                return
+                            self.audio_queue.put(
+                                (full_text, audio, self.tts.samplerate, group)
+                            )
+                        j = k
             else:
                 for line in clean_lines:
                     if self.stop_event.is_set():
                         return
-                    audio = self.tts.generate(line.text, voice_id)
+                    voice = _voice_for_line(line)
+                    audio = self.tts.generate(line.text, voice)
                     if self.stop_event.is_set():
                         return
                     self.audio_queue.put(
@@ -377,8 +469,9 @@ class NarratorEngine:
 
         threading.Thread(target=producer, daemon=True).start()
 
-        print("\n--- 🟢 PLAYBACK STARTED ---")
-        print(f"  NPC: {voice_selection.npc_name} | Voice: {voice_selection.category}")
+        log.info(
+            f"Playback started: NPC={voice_selection.npc_name} | Voice={voice_selection.category}"
+        )
         while not self.stop_event.is_set():
             try:
                 # Polling wait to keep loop responsive
@@ -394,16 +487,21 @@ class NarratorEngine:
             if self.stop_event.is_set():
                 break
 
-            print(f"▶️ Speaking: {text[:60]}...")
+            voice_label = "NPC" if any(ln.is_quoted for ln in lines) else "Narrator"
+            # log.info(
+            #     f"Speaking [{voice_label}]: {text[:60]}{'...' if len(text) > 60 else ''}"
+            # )
+            log.info(f"Speaking [{voice_label}]: {text}")
+
             if len(audio) > 0:
                 _cfg = ConfigManager()
                 vol = (
-                    _cfg.get_float("TTSSettings", "lux_volume", fallback=0.5)
-                    if self.backend_id == "lux"
+                    _cfg.get_float("TTSSettings", "omnivoice_volume", fallback=0.5)
+                    if self.backend_id == "omnivoice"
                     else _cfg.get_float("TTSSettings", "default_volume", fallback=0.4)
                 )
                 play_audio(audio, sr, volume=vol, stop_event=self.stop_event)
 
                 time.sleep(0.1)
 
-        print("--- 🔴 PLAYBACK ENDED ---\n")
+        log.info("Playback ended")

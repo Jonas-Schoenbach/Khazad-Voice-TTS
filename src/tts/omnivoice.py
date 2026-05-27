@@ -34,7 +34,7 @@ class OmniVoiceBackend(TTSBackend):
 
         from omnivoice import OmniVoice
 
-        self.backend_id = "lux"  # Keep same ID for memory compatibility
+        self.backend_id = "omnivoice"
         self.tts = OmniVoice.from_pretrained(
             "k2-fsa/OmniVoice",
             device_map="cuda:0",
@@ -50,7 +50,7 @@ class OmniVoiceBackend(TTSBackend):
         self.voice_library = self._load_voice_library()
 
         total_voices = sum(len(v) for v in self.voice_library.values())
-        log.info(f"✅ OmniVoice Ready. Loaded {total_voices} reference voices.")
+        log.info(f"OmniVoice ready. Loaded {total_voices} reference voices.")
 
         self._warmup()
 
@@ -58,7 +58,7 @@ class OmniVoiceBackend(TTSBackend):
         """
         Runs a short, silent generation to compile PyTorch CUDA graphs.
         """
-        log.info("🔥 Warming up OmniVoice (takes ~10s for first run)...")
+        log.info("Warming up OmniVoice (takes ~10s for first run)...")
         try:
             if "narrator" in self.voice_library:
                 voice_id = "narrator|0"
@@ -66,15 +66,15 @@ class OmniVoiceBackend(TTSBackend):
                 first_cat = list(self.voice_library.keys())[0]
                 voice_id = f"{first_cat}|0"
             else:
-                log.warning("⚠️ No voices found for warmup.")
+                log.warning("No voices found for warmup.")
                 return
 
             t0 = time.time()
             self.generate("Warmup.", voice_id, warmup=True)
             t1 = time.time()
-            log.info(f"🔥 Warmup Complete in {t1 - t0:.2f}s.")
+            log.info(f"Warmup complete in {t1 - t0:.2f}s.")
         except Exception as e:
-            log.warning(f"⚠️ Warmup failed (non-critical): {e}")
+            log.warning(f"Warmup failed (non-critical): {e}")
 
     def _read_clean_lines(self, txt_path: Path) -> List[str]:
         if not txt_path.exists():
@@ -153,6 +153,29 @@ class OmniVoiceBackend(TTSBackend):
         voice_id = f"{key}|{sample['id']}"
         return voice_id, key
 
+    def pick_narrator_voice(self) -> Tuple[str, str]:
+        """
+        Returns the dedicated narrator voice (narrator_3.flac).
+
+        Falls back to any available narrator voice, or "default" if none exist.
+
+        Returns
+        -------
+        tuple[str, str]
+            (voice_id, category) for the narrator voice.
+        """
+        if "narrator" not in self.voice_library or not self.voice_library["narrator"]:
+            return "default", "fallback"
+
+        # Prefer narrator_3.flac
+        for entry in self.voice_library["narrator"]:
+            if Path(entry["audio"]).name == "narrator_3.flac":
+                return f"narrator|{entry['id']}", "narrator"
+
+        # Fallback to any narrator voice
+        sample = self.voice_library["narrator"][0]
+        return f"narrator|{sample['id']}", "narrator"
+
     def generate(self, text: str, voice_id: str, warmup: bool = False) -> np.ndarray:
         if "|" not in voice_id:
             return np.array([], dtype=np.float32)
@@ -166,9 +189,7 @@ class OmniVoiceBackend(TTSBackend):
             return np.array([], dtype=np.float32)
 
         if not warmup:
-            log.info(
-                f"🎙️ Cloning [{category}] (Source: {Path(ref_data['audio']).name})..."
-            )
+            log.info(f"Cloning [{category}] (source: {Path(ref_data['audio']).name})")
 
         try:
             result = self.tts.generate(
